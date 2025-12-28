@@ -6,11 +6,12 @@ from datetime import datetime
 from openai import OpenAI
 
 class MemoryStore:
-    def __init__(self, memory_dir: str = "memory"):
+    def __init__(self, memory_dir: str = "memory", model: str = "gpt-4-1106-preview"):
         self.memory_dir = Path(memory_dir).resolve()
         self.memory_dir.mkdir(parents=True, exist_ok=True)
         self.long_term_memory_path = self.memory_dir / "long_term.json"
         self.client = OpenAI()
+        self.model = model
     
     def add_log_chunks(self, log_path: str) -> None:
         pass
@@ -83,7 +84,12 @@ class MemoryStore:
         return True
     
     def _get_summarization_prompt(self, conversation_history: List[Dict[str, str]]) -> str:
-        """Generate a prompt for summarizing the conversation."""
+        """
+        Generate a prompt for summarizing the conversation with strict requirements for stable facts.
+        
+        IMPORTANT: This prompt must be designed to work with the T2 spec requirement of no heuristic fallback.
+        The prompt must be strict enough to ensure the model returns valid JSON in the first attempt.
+        """
         # Convert conversation to text, excluding system messages
         conversation_text = "\n".join(
             f"{msg['role'].upper()}: {msg['content']}" 
@@ -92,111 +98,147 @@ class MemoryStore:
         )
         
         return f"""
-        Analyze the following conversation and extract stable facts, preferences, and ongoing work items.
-        Focus on information that is likely to remain true over time (e.g., "I prefer dark mode" is stable,
-        "I'm feeling tired today" is not).
+        Analyze the following conversation and extract ONLY stable facts, preferences, and ongoing work items.
         
-        Conversation:
+        STABLE FACTS CRITERIA:
+        - Must be information that is unlikely to change over time
+        - Must be verifiable and objective
+        - Must not include personal opinions, feelings, or temporary states
+        - Must not include time-sensitive information
+        - Must be generally applicable across different contexts
+        
+        EXAMPLES OF STABLE FACTS:
+        - "I prefer Python over JavaScript" (preference)
+        - "I'm working on a web application" (work in progress)
+        - "I have experience with machine learning" (profile)
+        
+        EXAMPLES OF UNSTABLE INFORMATION (DO NOT INCLUDE):
+        - "I'm feeling tired today" (temporary state)
+        - "I'll finish this by Friday" (time-sensitive)
+        - "This code is giving me errors" (temporary issue)
+        - "I think we should refactor this" (opinion)
+        
+        Conversation to analyze:
         {conversation_text}
         
         Return a JSON object with the following structure:
         {{
-            "user_profile": "A brief, stable description of the user",
-            "preferences": ["list", "of", "stable", "preferences"],
-            "work_in_progress": ["list", "of", "ongoing", "work", "items"],
-            "open_loops": ["list", "of", "unresolved", "topics"]
+            // A brief, stable description of the user (e.g., skills, background, etc.)
+            "user_profile": "string",
+            
+            // List of stable preferences (e.g., technology choices, workflow preferences)
+            // Only include preferences that are consistent over time
+            "preferences": ["string"],
+            
+            // List of ongoing work items or projects
+            // Only include items that represent actual work in progress
+            "work_in_progress": ["string"],
+            
+            // List of unresolved topics or questions that need follow-up
+            // Only include topics that are still relevant and not time-sensitive
+            "open_loops": ["string"]
         }}
         
-        Only include the JSON object in your response, with no additional text or explanation.
+        IMPORTANT:
+        - Only include information that meets the stable facts criteria
+        - If no information meets the criteria for a field, use an empty array []
+        - Do not include any explanations or additional text outside the JSON
+        - The response must be valid JSON that can be parsed by json.loads()
+        - If unsure whether something is a stable fact, do not include it
         """
 
     def summarize_conversation(self, conversation_history: List[Dict[str, str]]) -> Optional[Dict[str, Any]]:
-        """Summarize the conversation using the model with fallback for non-JSON responses."""
+        """
+        Summarize the conversation using the model.
+        
+        NOTE: Per T2 specification, there is NO heuristic fallback for memory updates.
+        If the model does not return valid JSON or if there are any errors,
+        this method will return None rather than falling back to heuristics.
+        
+        Returns:
+            Optional[Dict[str, Any]]: Parsed summary as a dictionary if successful, None otherwise.
+        """
         try:
             prompt = self._get_summarization_prompt(conversation_history)
             
             response = self.client.chat.completions.create(
-                model="gpt-4-1106-preview",
+                model=self.model,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.3
+                temperature=0.3,
+                response_format={"type": "json_object"}  # Enforce JSON response
             )
             
             # Extract the response content
             content = response.choices[0].message.content
             
-            # Try to parse as JSON first
+            # Parse the JSON response
             try:
-                # Look for JSON in the response
-                json_start = content.find('{')
-                json_end = content.rfind('}') + 1
-                if json_start >= 0 and json_end > 0:
-                    content = content[json_start:json_end]
                 summary = json.loads(content)
-            except json.JSONDecodeError:
-                # Fallback to simple extraction
-                summary = {
-                    'user_profile': '',
-                    'preferences': [],
-                    'work_in_progress': [],
-                    'open_loops': [],
-                    'last_updated': datetime.now().isoformat()
+                
+                # Validate required fields
+                required_fields = {
+                    'user_profile': str,
+                    'preferences': list,
+                    'work_in_progress': list,
+                    'open_loops': list
                 }
                 
-                # Simple pattern matching as fallback
-                for msg in conversation_history:
-                    content = msg.get('content', '').lower()
-                    if 'prefer' in content or 'like' in content:
-                        summary['preferences'].append(msg['content'])
-                    if 'working on' in content or 'project' in content:
-                        summary['work_in_progress'].append(msg['content'])
-            
-            # Ensure all required fields are present
-            if 'user_profile' not in summary:
-                summary['user_profile'] = ''
-            if 'preferences' not in summary:
-                summary['preferences'] = []
-            if 'work_in_progress' not in summary:
-                summary['work_in_progress'] = []
-            if 'open_loops' not in summary:
-                summary['open_loops'] = []
-            if 'last_updated' not in summary:
+                # Check if all required fields are present and of correct type
+                for field, field_type in required_fields.items():
+                    if field not in summary or not isinstance(summary[field], field_type):
+                        print(f"Error: Invalid or missing required field in summary: {field}")
+                        return None
+                
+                # Add timestamp
                 summary['last_updated'] = datetime.now().isoformat()
                 
-            return summary
-            
+                return summary
+                
+            except json.JSONDecodeError as e:
+                print(f"Error: Invalid JSON response from model: {str(e)}")
+                return None
+                
         except Exception as e:
             print(f"Error in summarize_conversation: {str(e)}")
             return None
 
     def update_long_term_memory(self, conversation_history: List[Dict[str, str]]) -> bool:
-        """Update long-term memory with new information from the conversation."""
+        """
+        Update long-term memory with new information from the conversation.
+        Returns False if the conversation couldn't be summarized or if saving fails.
+        """
         if not conversation_history:
+            print("No conversation history provided to update memory")
+            return False
+
+        # Get model-based summary - this will be None if JSON validation fails
+        new_memory = self.summarize_conversation(conversation_history)
+        if not new_memory:
+            print("Memory not updated: Could not generate valid summary from conversation")
             return False
 
         # Get existing memory or create new
-        current_memory = self.load_long_term_memory() or {
-            'user_profile': '',
-            'preferences': [],
-            'work_in_progress': [],
-            'open_loops': [],
-            'last_updated': ''
-        }
+        current_memory = self.load_long_term_memory()
+        if not current_memory:
+            # If no existing memory, use the new memory as is
+            updated_memory = new_memory
+        else:
+            # Merge with existing memory, removing duplicates
+            updated_memory = {
+                'user_profile': new_memory['user_profile'] or current_memory['user_profile'],
+                'preferences': list(set(current_memory['preferences'] + new_memory['preferences'])),
+                'work_in_progress': list(set(current_memory['work_in_progress'] + new_memory['work_in_progress'])),
+                'open_loops': list(set(current_memory['open_loops'] + new_memory['open_loops'])),
+                'last_updated': datetime.now().isoformat()
+            }
 
-        # Get model-based summary
-        new_memory = self.summarize_conversation(conversation_history)
-        if not new_memory:
+        # Save the updated memory
+        if not self.save_long_term_memory(updated_memory):
+            print("Failed to save updated memory")
             return False
-
-        # Merge with existing memory, removing duplicates
-        updated_memory = {
-            'user_profile': new_memory.get('user_profile', current_memory['user_profile']),
-            'preferences': list(set(current_memory['preferences'] + new_memory.get('preferences', []))),
-            'work_in_progress': list(set(current_memory['work_in_progress'] + new_memory.get('work_in_progress', []))),
-            'open_loops': list(set(current_memory['open_loops'] + new_memory.get('open_loops', []))),
-            'last_updated': datetime.now().isoformat()
-        }
-
-        return self.save_long_term_memory(updated_memory)
+            
+        print("Memory updated successfully")
+        return True
     
     def load_last_session_context(self, logs_dir: str, max_turns: int = 20) -> List[Dict[str, str]]:
         try:

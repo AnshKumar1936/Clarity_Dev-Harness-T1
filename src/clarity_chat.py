@@ -26,7 +26,9 @@ class ClarityChat:
         # Only initialize memory store if memory config exists and is enabled
         self.memory_store = None
         if 'memory' in self.config and self.config['memory'].get('enable_long_term_memory', False):
-            self.memory_store = MemoryStore()
+            # Get the model from config, default to 'gpt-4-1106-preview' for backward compatibility
+            memory_model = self.config['memory'].get('model', self.config.get('model', 'gpt-4-1106-preview'))
+            self.memory_store = MemoryStore(model=memory_model)
             
         signal.signal(signal.SIGINT, self._handle_exit)
         self.setup_logging()
