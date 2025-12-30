@@ -66,6 +66,25 @@ python src/clarity_chat.py
 `memory/long_term.json`
 
 **Features:**
+- **AI-Powered Memory**: Uses model-based summarization to extract key information
+- **Structured Storage**: Organizes memory into:
+  - User profile (explicitly set)
+  - Preferences (automatically extracted from conversations)
+  - Work in progress (ongoing tasks and projects)
+  - Open loops (pending items needing follow-up)
+- **Automatic Updates**: Memory is updated:
+  - After meaningful conversations (minimum 2 user-assistant exchanges)
+  - On clean exit (`/exit` or `/quit`)
+  - When explicitly requested via memory commands
+- **Conversation Logging**: Full conversations are chunked and stored for context
+
+
+## MEMORY SYSTEM (T2)
+
+**Location:**
+`memory/long_term.json`
+
+**Features:**
 - Automatically saves user preferences and work items
 - Persists between sessions
 - You can set your user profile using `/memory set user_profile "Your profile text here"`
@@ -74,14 +93,18 @@ python src/clarity_chat.py
 - Can be viewed with `/memory` command
 - Updates on clean exit (`/exit` or `/quit`)
 
-
 ## CONFIGURATION
 
 `config/config.json` controls:
-- `boot_doc_path`
-- `model`
-- `temperature`
-- `max_tokens`
+- `boot_doc_path` - Path to the boot document
+- `model` - Default model for chat responses
+- `temperature` - Response randomness (0.0 to 2.0)
+- `max_tokens` - Maximum tokens per response
+- `memory` - Memory configuration (optional):
+  - `enable_long_term_memory`: true/false to enable/disable memory features
+  - `model`: Override model for memory summarization
+  - `enable_last_session_context`: true/false to load previous session context
+  - `max_last_session_turns`: Number of messages to load from last session
 
 ## COMMANDS
 - `/help` – show command list

@@ -214,36 +214,74 @@ class ClarityChat:
     def _summarize_session(self) -> bool:
         """Summarize the current session and update long-term memory using the model."""
         try:
-            if not hasattr(self, 'memory_store') or self.memory_store is None or not self.conversation_history or not self.config.get('memory', {}).get('enable_long_term_memory', False):
+            if not hasattr(self, 'memory_store') or self.memory_store is None or \
+               not self.conversation_history or \
+               not self.config.get('memory', {}).get('enable_long_term_memory', False):
                 return False
 
-            print("\nSaving conversation to memory...")
-            result = self.memory_store.update_long_term_memory(self.conversation_history)
+            # Only summarize if we have enough conversation history
+            if len(self.conversation_history) < 2:  # At least one user-assistant exchange
+                return False
+                
+            print("\nAnalyzing conversation for memory updates...")
+            
+            # Only include the last few messages for memory updates
+            recent_messages = self.conversation_history[-4:]  # Last 2 exchanges
+            result = self.memory_store.update_long_term_memory(recent_messages)
+            
+            if result is None:
+                print("No memory updates needed (no new information to store)")
+                return False
+                
             if result:
                 print("✓ Memory updated successfully")
             else:
-                print("! Failed to update memory")
+                print("! No valid memory updates found in conversation")
             return result
 
         except Exception as e:
             print(f"Error updating memory: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def _handle_exit(self, signum=None, frame=None) -> None:
-        """Handle clean exit with session summarization."""
+        """Handle clean exit with session summarization and log chunking."""
         print("\n" + Fore.YELLOW + "Saving session..." + Style.RESET_ALL)
         
         try:
-            if hasattr(self, 'memory_store') and hasattr(self, 'conversation_history'):
+            memory_enabled = hasattr(self, 'memory_store') and self.memory_store is not None and \
+                           self.config.get('memory', {}).get('enable_long_term_memory', False)
+                           
+            if memory_enabled and hasattr(self, 'conversation_history') and self.conversation_history:
+                print("Summarizing conversation for memory updates...")
                 success = self._summarize_session()
                 if success:
-                    print(Fore.GREEN + "✓ Session saved successfully" + Style.RESET_ALL)
+                    print(Fore.GREEN + "✓ Memory updated successfully" + Style.RESET_ALL)
                 else:
-                    print(Fore.YELLOW + "! Session save completed with warnings" + Style.RESET_ALL)
+                    print(Fore.YELLOW + "! No new memory updates were made" + Style.RESET_ALL)
+            
+            # Save the conversation log and add to memory chunks if memory is enabled
+            if hasattr(self, 'log_file') and self.log_file:
+                print(f"Session log saved to: {self.log_file}")
+                
+                # Add log chunks to memory store if memory is enabled
+                if memory_enabled:
+                    try:
+                        print("Adding conversation chunks to memory...")
+                        self.memory_store.add_log_chunks(str(self.log_file))
+                        print(Fore.GREEN + "✓ Conversation chunks added to memory" + Style.RESET_ALL)
+                    except Exception as e:
+                        print(Fore.YELLOW + f"! Could not add log chunks to memory: {str(e)}" + Style.RESET_ALL)
+                        import traceback
+                        traceback.print_exc()
+                
         except Exception as e:
             print(Fore.RED + f"Error during exit: {str(e)}" + Style.RESET_ALL)
+            import traceback
+            traceback.print_exc()
         finally:
-            print("\nGoodbye!")
+            print("\nGoodbye!" + Style.RESET_ALL)
             sys.exit(0)
 
     def run(self) -> None:
