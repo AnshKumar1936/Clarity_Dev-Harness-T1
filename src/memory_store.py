@@ -6,11 +6,11 @@ from datetime import datetime
 from openai import OpenAI
 
 class MemoryStore:
-    def __init__(self, memory_dir: str = "memory", model: str = "gpt-4-1106-preview"):
+    def __init__(self, memory_dir: str = "memory", model: str = "gpt-4-1106-preview", api_key: str = None):
         self.memory_dir = Path(memory_dir).resolve()
         self.memory_dir.mkdir(parents=True, exist_ok=True)
         self.long_term_memory_path = self.memory_dir / "long_term.json"
-        self.client = OpenAI()
+        self.client = OpenAI(api_key=api_key) if api_key else OpenAI()
         self.model = model
     
     def add_log_chunks(self, log_path: str) -> None:

@@ -28,7 +28,10 @@ class ClarityChat:
         if 'memory' in self.config and self.config['memory'].get('enable_long_term_memory', False):
             # Get the model from config, default to 'gpt-4-1106-preview' for backward compatibility
             memory_model = self.config['memory'].get('model', self.config.get('model', 'gpt-4-1106-preview'))
-            self.memory_store = MemoryStore(model=memory_model)
+            self.memory_store = MemoryStore(
+                model=memory_model,
+                api_key=get_api_key()  # Pass the same API key used by the chat client
+            )
             
         signal.signal(signal.SIGINT, self._handle_exit)
         self.setup_logging()
@@ -303,8 +306,7 @@ class ClarityChat:
                     self.log_message("user", user_input)
                     
                     if user_input.lower() in ('/exit', '/quit'):
-                        self._summarize_session()
-                        print("Goodbye!")
+                        self._handle_exit()
                         break
                         
                     elif user_input.lower() == '/reset':
@@ -393,7 +395,8 @@ class ClarityChat:
                     self.log_message("system", error_msg)
         
         finally:
-            self._summarize_session()
+            # Removed redundant _summarize_session() call as it's already handled by _handle_exit()
+            pass
 
 
 def main():

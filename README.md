@@ -65,33 +65,54 @@ python src/clarity_chat.py
 **Location:**
 `memory/long_term.json`
 
-**Features:**
-- **AI-Powered Memory**: Uses model-based summarization to extract key information
-- **Structured Storage**: Organizes memory into:
-  - User profile (explicitly set)
-  - Preferences (automatically extracted from conversations)
-  - Work in progress (ongoing tasks and projects)
-  - Open loops (pending items needing follow-up)
-- **Automatic Updates**: Memory is updated:
-  - After meaningful conversations (minimum 2 user-assistant exchanges)
-  - On clean exit (`/exit` or `/quit`)
-  - When explicitly requested via memory commands
-- **Conversation Logging**: Full conversations are chunked and stored for context
+### Features
 
+#### AI-Powered Memory
+- Uses OpenAI's model to summarize conversations and extract key information
+- Maintains context and learns from user interactions over time
+- Automatically categorizes information into structured format
+- Processes conversations using the same model as the chat client (default: gpt-4-1106-preview)
 
-## MEMORY SYSTEM (T2)
+#### Memory Structure
+- **User Profile**: Explicitly set user information (set via `/memory set user_profile`)
+- **Preferences**: Automatically extracted from conversations (e.g., "I like...", "I prefer...")
+- **Work in Progress**: Tracks ongoing tasks and projects (e.g., "I'm working on...")
+- **Open Loops**: Remembers pending items needing follow-up
+- **Conversation History**: Full conversations are chunked and stored in `memory/chunks/`
 
-**Location:**
-`memory/long_term.json`
+#### Memory Updates
+Memory is automatically updated in these scenarios:
+- On clean exit (`/exit` or `/quit`)
+- When explicitly requested via memory commands
+- Uses the same API key as the chat client for consistent authentication
 
-**Features:**
-- Automatically saves user preferences and work items
-- Persists between sessions
-- You can set your user profile using `/memory set user_profile "Your profile text here"`
-- Mention preferences (using "I like", "I prefer", etc.)
-- Talk about work in progress (using "I'm working on", "I plan to", etc.)
-- Can be viewed with `/memory` command
-- Updates on clean exit (`/exit` or `/quit`)
+#### Commands
+- `/memory` - View current memory state
+- `/memory set user_profile "Your profile"` - Set your user profile
+- `/memory add preference "Your preference"` - Add a preference
+- `/memory add work "Work item"` - Add a work in progress item
+- `/memory add loop "Open loop"` - Add an open loop item
+
+#### Configuration
+Memory settings are configured in `config/config.json`:
+
+```json
+{
+  "memory": {
+    "enable_long_term_memory": true,
+    "model": "gpt-4-1106-preview",
+    "enable_last_session_context": true,
+    "max_last_session_turns": 5
+  }
+}
+```
+
+- `enable_long_term_memory`: Enable/disable the memory system
+- `model`: The OpenAI model to use for memory summarization
+- `enable_last_session_context`: Load context from previous session on startup
+- `max_last_session_turns`: Number of previous conversation turns to load
+
+**Note:** The memory system uses the same API key as the chat client, configured in your `.env` file.
 
 ## CONFIGURATION
 
