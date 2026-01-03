@@ -1,4 +1,4 @@
-# Clarity Dev Harness – T1 & T2
+# Clarity Dev Harness – T1 & T2 Build
 
 
 A minimal terminal-based chat harness that:
